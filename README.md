@@ -11,28 +11,28 @@ COMMANDS TO RUN:
 
 IMPLEMENTATION:
 
-//struct which contains process id and message
+/*struct which contains process id and message*/
 type Envelope struct {
     Pid int
     MsgId int64
     Msg interface{}
 }
 
-//interface for the server
+/*interface for the server*/
 type Server interface {
-    // Id of this server
+    /*Id of this server*/
     Pid() int
-    // array of other servers' ids in the same cluster
+    /*// array of other servers' ids in the same cluster*/
     Peers() []int
 
-    // the channel to use to send messages to other peers
+    /*// the channel to use to send messages to other peers*/
     Outbox() chan *Envelope
    
-    // the channel to receive messages from other peers.
+    /*// the channel to receive messages from other peers.*/
     Inbox() chan *Envelope
 }
 
-//struct of a process which sends and recieves messages
+/*struct of a process which sends and recieves messages*/
 type Node struct{
    p_id int
    peers []int //array of process id's
@@ -41,10 +41,9 @@ type Node struct{
    chin chan *Envelope
 }
 
-//New() function initializes a new process Node.
-//There are 2 Go routines one is for listening and one for sending messages
-//First read the json file which contains all the peer process id's and address's then store it to an array
-  //and pass these arrays to Node() which creates and initializes process
+/*New() function initializes a new process Node.*/
+/*There are 2 Go routines one is for listening and one for sending messages*/
+/*First read the json file which contains all the peer process id's and address's then store it to an array and pass these arrays to Node() which creates and initializes process*/
 func New(id int,infile string) Server{
 	
     
