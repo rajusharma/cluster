@@ -1,9 +1,9 @@
-package cluster
+package main
 import (
     "fmt"
+	zmq "github.com/pebbe/zmq4"
     "os"
-    "net"
-    "io"
+	"time"
     "encoding/json"
     "io/ioutil"
 )
@@ -73,7 +73,9 @@ type points struct {
     Host   string
 }
 //////////
-func New(id int,infile string) Server{
+
+//constructs a new server node 
+func New(id int,infile string) *Node{
 	//reading json file and storing in arrays
 	file, e := ioutil.ReadFile(infile)
     if e != nil {
@@ -93,83 +95,122 @@ func New(id int,infile string) Server{
     
     
 	mynode := Node{id,id_arr,adds_arr,make(chan *Envelope),make(chan *Envelope)}
+	go SendMessage(mynode)
+	go RecvMessage(mynode)
+	return &mynode
+}
+
+func SendMessage(n Node) {
+	var remote1 string	
+	for {
+		select {
+			case tobesent, err := <- n.Outbox():
+				if err == false {
+					return
+				} else { 
+					sid:=tobesent.Pid
+					tobesent.Pid=n.p_id
+					b, _ := json.Marshal(tobesent)
+
+					if sid==-1{		//if -1 then broadcast
+						for key:= range n.peers{
+							if n.peers[key]!=n.p_id{
+								remote1=n.adds[key]
+								
+								client, _ := zmq.NewSocket(zmq.PUSH)
+								defer client.Close()
+								client.Connect(remote1)
+								client.SendBytes(b,0)
+								//client.Close()
+								//println("hello")	
+								//client.RecvBytes(0)								
+							}
+						}
+					}else{		
+						//finding address of my sid
+						for key:= range n.peers{
+							if n.peers[key] == n.p_id{
+								remote1=n.adds[key]
+								break
+							}
+						}
+						
+						client, _ := zmq.NewSocket(zmq.PUSH)
+						defer client.Close()
+						client.Connect(remote1)
+						client.SendBytes(b,0)
+						//client.RecvBytes(0)			
+						
+					}		
+				}
+		}
+	}
+	return
+}
+func RecvMessage(n Node) {
 	var remote string
-	//finding address of my pid
-	for key:= range id_arr{
-		if id_arr[key] == id{
-			remote=adds_arr[key]
+	//finding address of n's process id
+	for key:= range n.peers{
+		if n.peers[key] == n.p_id{
+			remote=n.adds[key]
 			break
 		}
 	}
+	ser, _ := zmq.NewSocket(zmq.PULL)
+	ser.Bind(remote)
+
+	for {		
+			msg, _ :=ser.RecvBytes(0)
+			/*the code is not running after this recvbytes*/
+			println("hello")
+			var dat Envelope
+			json.Unmarshal(msg,&dat) //converting into envelope
+			n.Inbox()<-&dat		//put in inbox
+			ser.SendBytes(msg,0)
+		}
+	return
+}
 	
-	//listener
-	go func(){
-		var data = make([]byte, 1024)
-		lis, error := net.Listen("tcp", remote)
-		defer lis.Close()
-		if error != nil { 
-			fmt.Printf("Error creating listener: %s\n", error )
-			os.Exit(1); 
-		}
-		for {
-			var read = true
-			con, error := lis.Accept()
-			if error != nil { fmt.Printf("Error: Accepting data: %s\n", error); os.Exit(2); } 
-			for read {
-				n, error := con.Read(data); //reading
-				switch error { 
-				case io.EOF:
-					read = false;
-				case nil:
-					var dat Envelope
-    				json.Unmarshal(data[0:n],&dat) //converting into envelope
-					mynode.Inbox()<-&dat		//put in inbox
-				default:
-					fmt.Printf("Error: Reading data : %s \n", error); 
-					read = false;
-				}
-			}
-			con.Close();
-		}
-	}()
-	//sender
-	go func(){
-		var remote1 string
-		tobesent:=<-mynode.Outbox() 
-		sid:=tobesent.Pid
-		tobesent.Pid=id
-		b, _ := json.Marshal(tobesent)//convert the envelope to byte
-		if sid==-1{		//if -1 then broadcast
-			for key:= range id_arr{
-				if id_arr[key]!=id{
-					remote1=adds_arr[key]
-					con, error := net.Dial("tcp",remote1);
-					if error != nil { fmt.Printf("Host not found: %s\n", error ); os.Exit(1); }
-		
-					
-					in, error := con.Write(b);
-					if error != nil { fmt.Printf("Error sending data: %s, in: %d\n", error, in ); os.Exit(2); }				
-				
-					con.Close();
-					
-				}
-			}
-		}else{
-		
-			//finding address of my sid
-			for key:= range id_arr{
-				if id_arr[key] == sid{
-					remote1=adds_arr[key]
-					break
-				}
-			}
-			con, error := net.Dial("tcp",remote1);
-			if error != nil { fmt.Printf("Host not found: %s\n", error ); os.Exit(1); }
-		
-			in, error := con.Write(b);
-			if error != nil { fmt.Printf("Error sending data: %s, in: %d\n", error, in ); os.Exit(2); }					
-			con.Close();
-		}		
-	}()
-	return mynode
+func main() {
+ 
+  //making servers and putting in array
+   var ser_arr []Server
+   p:=10
+   for i:=1;i<6;i++{
+   		ser_arr=append(ser_arr,New(p,"./peers.json"))
+   		p++
+   }
+ 
+  //putting envelope in outbox 
+   ser_arr[0].Outbox() <- &Envelope{Pid:-1, Msg: "helloaaaa there"}
+  
+   select {
+       case envelope := <- ser_arr[1].Inbox(): 
+           fmt.Printf("Received msg from %d: '%s'\n", envelope.Pid, envelope.Msg)
+  
+       case <- time.After(5 * time.Second): 
+           println("Waited and waited. Ab thak gaya\n")
+   }
+   select {
+       case envelope := <- ser_arr[2].Inbox(): 
+           fmt.Printf("Received msg from %d: '%s'\n", envelope.Pid, envelope.Msg)
+  
+       case <- time.After(5 * time.Second): 
+           println("Waited and waited. Ab thak gaya\n")
+   }
+   select {
+       case envelope := <- ser_arr[3].Inbox(): 
+           fmt.Printf("Received msg from %d: '%s'\n", envelope.Pid, envelope.Msg)
+  
+       case <- time.After(5 * time.Second): 
+           println("Waited and waited. Ab thak gaya\n")
+   }
+   select {
+       case envelope := <- ser_arr[4].Inbox(): 
+           fmt.Printf("Received msg from %d: '%s'\n", envelope.Pid, envelope.Msg)
+  
+       case <- time.After(5 * time.Second): 
+           println("Waited and waited. Ab thak gaya\n")
+   }
+   
 }
