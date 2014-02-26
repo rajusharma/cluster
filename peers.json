@@ -1,23 +1,23 @@
 {"Peers":[
     {
        "P_id": 10,
-       "Host":"localhost:9910"
+       "Host":"tcp://127.0.0.1:9006"
     },
     {
        "P_id": 11,
-       "Host":"localhost:9911"
+       "Host":"tcp://127.0.0.1:9007"
     },
     {
        "P_id": 12,
-       "Host":"localhost:9912"
+       "Host":"tcp://127.0.0.1:9003"
     },
     {
        "P_id": 13,
-       "Host":"localhost:9913"
+       "Host":"tcp://127.0.0.1:9004"
     },
     {
        "P_id": 14,
-       "Host":"localhost:9909"
+       "Host":"tcp://127.0.0.1:9005"
     }
   ]
 }
