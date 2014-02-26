@@ -1,4 +1,4 @@
-package main
+package cluster
 import (
     "fmt"
 	zmq "github.com/pebbe/zmq4"
@@ -41,8 +41,10 @@ type Server interface {
 
 type Node struct{
    p_id int
+   //my_add string
    peers []int
    adds []string
+   soc *zmq.Socket //socket for recieving messages
    chout chan *Envelope
    chin chan *Envelope
 }
@@ -88,19 +90,31 @@ func New(id int,infile string) *Node{
     //parsing into array from json object
     var id_arr []int
     var adds_arr []string
+	var remote string
     for key :=range jsontype.Peers{
-    	id_arr=append(id_arr,jsontype.Peers[key].P_id)
-    	adds_arr=append(adds_arr,jsontype.Peers[key].Host)
+		id1 := jsontype.Peers[key].P_id
+		addr := jsontype.Peers[key].Host
+		//check the address of current pid to open a socket for recieving
+		if id1==id {
+			remote=addr
+		}
+    	id_arr=append(id_arr,id1)
+    	adds_arr=append(adds_arr,addr)
     }
-    
-    
-	mynode := Node{id,id_arr,adds_arr,make(chan *Envelope),make(chan *Envelope)}
+    //creating a socket for recieving
+	client, err := zmq.NewSocket(zmq.PULL)
+	if err!=nil{
+		println(err)
+	}
+	client.Bind(remote)
+	mynode := Node{id,id_arr,adds_arr,client,make(chan *Envelope),make(chan *Envelope)}
 	go SendMessage(mynode)
 	go RecvMessage(mynode)
 	return &mynode
 }
 
 func SendMessage(n Node) {
+//println("hello")
 	var remote1 string	
 	for {
 		select {
@@ -112,35 +126,46 @@ func SendMessage(n Node) {
 					tobesent.Pid=n.p_id
 					b, _ := json.Marshal(tobesent)
 
+					//creating a socket for sending
+					client, err := zmq.NewSocket(zmq.PUSH)
+					if err!=nil{
+						println(err)
+						return
+					}
+
 					if sid==-1{		//if -1 then broadcast
 						for key:= range n.peers{
 							if n.peers[key]!=n.p_id{
-								remote1=n.adds[key]
+								remote1=n.adds[key]	
 								
-								client, _ := zmq.NewSocket(zmq.PUSH)
-								defer client.Close()
+								//connect to destination server	
+								//println(key ," = ",remote1)						
 								client.Connect(remote1)
-								client.SendBytes(b,0)
-								//client.Close()
-								//println("hello")	
-								//client.RecvBytes(0)								
+								_,err1 :=client.SendBytes(b, 0)
+								if err1!=nil{
+									println(err1)
+								}
+								time.Sleep(1*time.Second)
+								client.Disconnect(remote1)					
 							}
 						}
 					}else{		
 						//finding address of my sid
 						for key:= range n.peers{
-							if n.peers[key] == n.p_id{
+							if n.peers[key] == sid{
 								remote1=n.adds[key]
 								break
 							}
 						}
-						
-						client, _ := zmq.NewSocket(zmq.PUSH)
-						defer client.Close()
+						//println(remote1)	
 						client.Connect(remote1)
-						client.SendBytes(b,0)
-						//client.RecvBytes(0)			
-						
+						_,err1 :=client.SendBytes(b, 0)
+						//println("hello")
+						if err1!=nil{
+							println(err1)
+						}
+						time.Sleep(1*time.Second)
+						client.Disconnect(remote1)								
 					}		
 				}
 		}
@@ -148,69 +173,12 @@ func SendMessage(n Node) {
 	return
 }
 func RecvMessage(n Node) {
-	var remote string
-	//finding address of n's process id
-	for key:= range n.peers{
-		if n.peers[key] == n.p_id{
-			remote=n.adds[key]
-			break
-		}
-	}
-	ser, _ := zmq.NewSocket(zmq.PULL)
-	ser.Bind(remote)
-
 	for {		
-			msg, _ :=ser.RecvBytes(0)
-			/*the code is not running after this recvbytes*/
-			println("hello")
+			msg, _ :=n.soc.RecvBytes(0)
 			var dat Envelope
 			json.Unmarshal(msg,&dat) //converting into envelope
 			n.Inbox()<-&dat		//put in inbox
-			ser.SendBytes(msg,0)
 		}
 	return
 }
 	
-func main() {
- 
-  //making servers and putting in array
-   var ser_arr []Server
-   p:=10
-   for i:=1;i<6;i++{
-   		ser_arr=append(ser_arr,New(p,"./peers.json"))
-   		p++
-   }
- 
-  //putting envelope in outbox 
-   ser_arr[0].Outbox() <- &Envelope{Pid:-1, Msg: "helloaaaa there"}
-  
-   select {
-       case envelope := <- ser_arr[1].Inbox(): 
-           fmt.Printf("Received msg from %d: '%s'\n", envelope.Pid, envelope.Msg)
-  
-       case <- time.After(5 * time.Second): 
-           println("Waited and waited. Ab thak gaya\n")
-   }
-   select {
-       case envelope := <- ser_arr[2].Inbox(): 
-           fmt.Printf("Received msg from %d: '%s'\n", envelope.Pid, envelope.Msg)
-  
-       case <- time.After(5 * time.Second): 
-           println("Waited and waited. Ab thak gaya\n")
-   }
-   select {
-       case envelope := <- ser_arr[3].Inbox(): 
-           fmt.Printf("Received msg from %d: '%s'\n", envelope.Pid, envelope.Msg)
-  
-       case <- time.After(5 * time.Second): 
-           println("Waited and waited. Ab thak gaya\n")
-   }
-   select {
-       case envelope := <- ser_arr[4].Inbox(): 
-           fmt.Printf("Received msg from %d: '%s'\n", envelope.Pid, envelope.Msg)
-  
-       case <- time.After(5 * time.Second): 
-           println("Waited and waited. Ab thak gaya\n")
-   }
-   
-}
