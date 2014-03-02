@@ -1,6 +1,6 @@
 package cluster
 import (
-	//"fmt"
+	"fmt"
 	"time"
 	"testing"
 )
@@ -18,15 +18,16 @@ func Test_cluster(t *testing.T) {
    		ser_arr=append(ser_arr,New(p,"./peers.json"))
    		p++
    }
-   for i:=0;i<2;i++{
+   for i:=0;i<5;i++{
    		for j:=0;j<5;j++{ 		
-   			go sender(ser_arr[j])
-   			time.Sleep(3*time.Second)
+   			go sender(ser_arr[j])			
    			go receiver(ser_arr[j])
+   			time.Sleep(1*time.Second)
    		}  		
    }
    println("TotalSent = ",totalsent)
    println("TotalReceived = ",totalreceived)
+   println("TotalFailed = ",failedmsg)
   
    return
    
@@ -42,9 +43,14 @@ func sender(s Server){
 	totalsent = totalsent+4
 	//println(totalsent)
 	//sending message to all peers 10-14 
+	
+	//my id
+	sid:=s.Pid();
 	for i:=10;i<15;i++{
+		if i!=sid{
 		s.Outbox()<-&Envelope{Pid:i, Msg: msg1}
 		totalsent = totalsent+1
+		}
 	}
 	return
 }
@@ -54,7 +60,7 @@ func receiver(s Server){
 	for{
 	select {
        case envelope := <- s.Inbox(): 
-           //fmt.Printf("Received msg from %d: '%s'\n", envelope.Pid, envelope.Msg)
+           fmt.Printf("Received msg from %d: '%s'\n", envelope.Pid, envelope.Msg)
            if envelope.Msg == "hello"{
            		totalreceived = totalreceived+1
            }else{
@@ -63,8 +69,7 @@ func receiver(s Server){
   
        case <- time.After(5 * time.Second): 
        		failedmsg=failedmsg+1
-           //println("Waited and waited. Ab thak gaya\n")
+           println("Waited and waited. Ab thak gaya\n")
    	}
  	}
-   	return
 }
