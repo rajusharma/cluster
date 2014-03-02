@@ -3,7 +3,7 @@ import (
     "fmt"
 	zmq "github.com/pebbe/zmq4"
     "os"
-	"time"
+	//"time"
     "encoding/json"
     "io/ioutil"
 )
@@ -44,7 +44,9 @@ type Node struct{
    //my_add string
    peers []int
    adds []string
-   soc *zmq.Socket //socket for recieving messages
+   sendids []int		//ids of peer whom to send
+   rec_soc *zmq.Socket //socket for recieving messages
+   send_soc []*zmq.Socket //socket for sending messages
    chout chan *Envelope
    chin chan *Envelope
 }
@@ -107,7 +109,22 @@ func New(id int,infile string) *Node{
 		println(err)
 	}
 	client.Bind(remote)
-	mynode := Node{id,id_arr,adds_arr,client,make(chan *Envelope),make(chan *Envelope)}
+	
+	//creating sockets for sending
+	var send_soc []*zmq.Socket
+	var sendids []int
+	for key:=range id_arr{
+		if id_arr[key]!=id {
+			sender, err := zmq.NewSocket(zmq.PUSH)
+			if err!=nil{
+				println(err)
+			}
+			sender.Connect(adds_arr[key])
+			send_soc = append(send_soc,sender)
+			sendids = append(sendids,id_arr[key])
+		}
+	}
+	mynode := Node{id,id_arr,adds_arr,sendids,client,send_soc,make(chan *Envelope),make(chan *Envelope)}
 	go SendMessage(mynode)
 	go RecvMessage(mynode)
 	return &mynode
@@ -115,7 +132,7 @@ func New(id int,infile string) *Node{
 
 func SendMessage(n Node) {
 //println("hello")
-	var remote1 string	
+	//var remote1 string	
 	for {
 		select {
 			case tobesent, err := <- n.Outbox():
@@ -126,46 +143,26 @@ func SendMessage(n Node) {
 					tobesent.Pid=n.p_id
 					b, _ := json.Marshal(tobesent)
 
-					//creating a socket for sending
-					client, err := zmq.NewSocket(zmq.PUSH)
-					if err!=nil{
-						println(err)
-						return
-					}
-
 					if sid==-1{		//if -1 then broadcast
-						for key:= range n.peers{
-							if n.peers[key]!=n.p_id{
-								remote1=n.adds[key]	
-								
-								//connect to destination server	
-								//println(key ," = ",remote1)						
-								client.Connect(remote1)
-								_,err1 :=client.SendBytes(b, 0)
+						for key:= range n.send_soc{
+								//send the data
+								_,err1 :=n.send_soc[key].SendBytes(b, 0)
+								if err1!=nil{
+									println(err1)
+								}													
+							}
+					} else {		
+						//finding address of my sid and send the msg
+						for key:= range n.sendids{
+							if n.sendids[key] == sid{
+								//send the data to destination server
+								_,err1 :=n.send_soc[key].SendBytes(b, 0)
 								if err1!=nil{
 									println(err1)
 								}
-								time.Sleep(1*time.Second)
-								client.Disconnect(remote1)					
-							}
-						}
-					}else{		
-						//finding address of my sid
-						for key:= range n.peers{
-							if n.peers[key] == sid{
-								remote1=n.adds[key]
 								break
 							}
-						}
-						//println(remote1)	
-						client.Connect(remote1)
-						_,err1 :=client.SendBytes(b, 0)
-						//println("hello")
-						if err1!=nil{
-							println(err1)
-						}
-						time.Sleep(1*time.Second)
-						client.Disconnect(remote1)								
+						}			
 					}		
 				}
 		}
@@ -174,7 +171,7 @@ func SendMessage(n Node) {
 }
 func RecvMessage(n Node) {
 	for {		
-			msg, _ :=n.soc.RecvBytes(0)
+			msg, _ :=n.rec_soc.RecvBytes(0)
 			var dat Envelope
 			json.Unmarshal(msg,&dat) //converting into envelope
 			n.Inbox()<-&dat		//put in inbox
