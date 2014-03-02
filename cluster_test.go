@@ -60,7 +60,7 @@ func receiver(s Server){
 	for{
 	select {
        case envelope := <- s.Inbox(): 
-           fmt.Printf("Received msg from %d: '%s'\n", envelope.Pid, envelope.Msg)
+           //fmt.Printf("Received msg from %d: '%s'\n", envelope.Pid, envelope.Msg)
            if envelope.Msg == "hello"{
            		totalreceived = totalreceived+1
            }else{
@@ -69,7 +69,7 @@ func receiver(s Server){
   
        case <- time.After(5 * time.Second): 
        		failedmsg=failedmsg+1
-           println("Waited and waited. Ab thak gaya\n")
+           //println("Waited and waited. Ab thak gaya\n")
    	}
  	}
 }
