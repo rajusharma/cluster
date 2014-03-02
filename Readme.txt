@@ -14,5 +14,5 @@ How to USE
 	- There are 2 functions sender() and receiver() in cluster_test.go file which takes a server node as input and sends messages to peers
 	- Other fuctions are well documented in code cluster.go file
 
-Cluster_test.go
-	- Go to the file cluster.go you can see how server nodes are created and messages are sent using sender() and receiver() function
+Cluster.go
+	- Go to the file cluster.go you can see how server nodes are created and messages are sent.
