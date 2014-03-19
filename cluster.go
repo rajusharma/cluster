@@ -5,6 +5,8 @@ import (
     "os"
 	//"time"
     "encoding/json"
+    "encoding/gob"
+    "bytes"
     "io/ioutil"
 )
 const (BROADCAST = -1)
@@ -141,12 +143,17 @@ func SendMessage(n Node) {
 				} else { 
 					sid:=tobesent.Pid
 					tobesent.Pid=n.p_id
-					b, _ := json.Marshal(tobesent)
-
+					//encoding the envelope
+					bs :=new(bytes.Buffer) 
+					enc := gob.NewEncoder(bs) 
+					err := enc.Encode(tobesent)
+					if err != nil {
+						println("encode error:", err)
+					}      
 					if sid==-1{		//if -1 then broadcast
 						for key:= range n.send_soc{
 								//send the data
-								_,err1 :=n.send_soc[key].SendBytes(b, 0)
+								_,err1 :=n.send_soc[key].SendBytes(bs.Bytes(), 0)
 								if err1!=nil{
 									println(err1)
 								}													
@@ -156,7 +163,7 @@ func SendMessage(n Node) {
 						for key:= range n.sendids{
 							if n.sendids[key] == sid{
 								//send the data to destination server
-								_,err1 :=n.send_soc[key].SendBytes(b, 0)
+								_,err1 :=n.send_soc[key].SendBytes(bs.Bytes(), 0)
 								if err1!=nil{
 									println(err1)
 								}
@@ -172,8 +179,15 @@ func SendMessage(n Node) {
 func RecvMessage(n Node) {
 	for {		
 			msg, _ :=n.rec_soc.RecvBytes(0)
+			//decoding the envelope
+			b:=bytes.NewBuffer(msg)
+			dec := gob.NewDecoder(b) 
 			var dat Envelope
-			json.Unmarshal(msg,&dat) //converting into envelope
+			err := dec.Decode(&dat)
+			if err != nil {
+				println("decode error:", err)
+			}
+			//json.Unmarshal(msg,&dat) //converting into envelope
 			n.Inbox()<-&dat		//put in inbox
 		}
 	return
